@@ -213,7 +213,7 @@ void ConstructMaze(Maze& maz, Trajectory& solution)
         currentLoc = FindAnyVisitedCellWithNn(maz);
         if(currentLoc.first == -1)
         {
-          std::cerr << "All visited cells have no free nn" << std::endl;
+          //std::cout << "All visited cells have no free nn" << std::endl;
           return;
         }
       }
