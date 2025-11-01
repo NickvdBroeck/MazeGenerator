@@ -1,9 +1,13 @@
 #include <vector>
 #include <iostream>
+#include <sstream>
+#include <io.h>
+#include <fcntl.h>
+#include <string>
 
-const size_t grid_width = 45;
-const size_t grid_height = 15;
-const size_t nrCells = grid_width*grid_height;
+//const size_t grid_width = 5;
+//const size_t grid_height = 5;
+//const size_t nrCells = grid_width*grid_height;
 
 typedef std::pair<int, int> Loc; // up-down ; L-R
 
@@ -35,50 +39,190 @@ enum Dir
 typedef std::vector<std::vector<Cell>> Maze;
 typedef std::vector<Loc> Trajectory;
 typedef std::vector<std::pair<Dir,Cell>> Neighbors;
+typedef std::vector<std::wstring> Visualization;
 
-void PrintCell1(const Cell& cell, bool printLast)
+Visualization CreateEmptyGrid(const std::size_t grid_height, const std::size_t grid_width)
 {
-  std::cout << "+" << (cell.wallOpen_Down?"  ":"--") << (printLast?"+":"");
-}
-void PrintCell2(const Cell& cell, bool printLast)
-{
-  std::cout << (cell.wallOpen_Left?" ":"|") << (cell.isRoute?"xx":"  ") << (printLast?(cell.wallOpen_Right?" ":"|"):"");
-}
-void PrintCell3(const Cell& cell, bool printLast)
-{
-  std::cout << "+" << (cell.wallOpen_Up?"  ":"--") << (printLast?"+":"");
+  const std::size_t lastPixel_r = 2*grid_height; // 2 because: 1*wall + 1*center
+  const std::size_t lastPixel_c = 3*grid_width; // 3 becaus: 1*wall + 2*center
+
+  Visualization vis(lastPixel_r+1); 
+  for(auto& row : vis)
+  {
+    row.resize(lastPixel_c+1, ' '); 
+  }
+
+  // outer corners
+  vis[0][0] = L'\x250c';
+  vis[0][lastPixel_c] = L'\x2510';
+  vis[lastPixel_r][0] = L'\x2514';
+  vis[lastPixel_r][lastPixel_c] = L'\x2518';
+
+  // Horizontal walls
+  for(int r=0; r<=lastPixel_r; r+=2)
+  {
+    for(int c=1; c<=lastPixel_c; c+=3)
+    {
+      vis[r][c] = L'\x2500';
+      vis[r][c+1] = L'\x2500';
+    }
+  }
+
+  // Vertical walls
+  for(int r=1; r<=lastPixel_r; r+=2)
+  {
+    for(int c=0; c<=lastPixel_c; c+=3)
+    {
+      vis[r][c] = L'\x2502';
+    }
+  }
+
+  // remaining corners
+  for(int r=2; r<=lastPixel_r-1; r+=2)
+  {
+    vis[r][0] = L'\x251c';
+    vis[r][lastPixel_c] = L'\x2524';
+    for(int c=3; c<=lastPixel_c-1; c+=3)
+    {
+      vis[r][c] = L'\x253c';
+    }  
+  }
+  for(int c=3; c<=lastPixel_c-1; c+=3)
+  {
+    vis[0][c] = L'\x252c';
+    vis[lastPixel_r][c] = L'\x2534';
+  }
+
+  return vis;
 }
 
-
-void PrintMazeToStd(const Maze& maz)
+void RemoveWalls(Visualization& vis, const Cell& cell, const Loc pos)
 {
+  if(cell.wallOpen_Down)
+  {
+    vis[pos.first][pos.second+1] = ' ';
+    vis[pos.first][pos.second+2] = ' ';
+  }
+  if(cell.wallOpen_Up)
+  {
+    vis[pos.first+2][pos.second+1] = ' ';
+    vis[pos.first+2][pos.second+2] = ' ';
+  }
+  if(cell.wallOpen_Left)
+  {
+    vis[pos.first+1][pos.second] = ' ';
+  }
+  if(cell.wallOpen_Right)
+  {
+    vis[pos.first+1][pos.second+3] = ' ';
+  }
+}
+
+wchar_t GetCorner(bool N, bool E, bool S, bool W)
+{
+  if (!N && !E && !S && W) return L'\x2574';
+  if (N && !E && !S && !W) return L'\x2575';
+  if (!N && E && !S && !W) return L'\x2576';
+  if (!N && !E && S && !W) return L'\x2577';
+
+  // 2 empty
+  if (N && E && !S && !W) return L'\x2514';
+  if (N && !E && S && !W) return L'\x2502';
+  if (N && !E && !S && W) return L'\x2518';
+  if (!N && E && S && !W) return L'\x250c';
+  if (!N && E && !S && W) return L'\x2500';
+  if (!N && !E && S && W) return L'\x2510';
+
+  // 1 empty
+  if (!N && E && S && W) return L'\x252c';
+  if (N && !E && S && W) return L'\x2524';
+  if (N && E && !S && W) return L'\x2534';
+  if (N && E && S && !W) return L'\x251c';
+
+  return L'\x253c';
+}
+
+void CorrectCorners(Visualization& vis)
+{ 
+  const std::size_t lastPixel_r = vis.size()-1;
+  const std::size_t lastPixel_c = vis[0].size()-1;
+  // inner corners
+  for(int r=0; r<=lastPixel_r; r+=2)
+  {
+    for(int c=0; c<=lastPixel_c; c+=3)
+    {
+      // N == taken,  !N == empty
+      const bool N = (r != 0) ? vis[r-1][c] != L' ' : false;
+      const bool S = (r != lastPixel_r) ? vis[r+1][c] != L' ' : false;
+      const bool W = (c !=0) ? vis[r][c-1] != L' ' : false;
+      const bool E = (c != lastPixel_c) ? vis[r][c+1] != L' ' : false;
+
+      vis[r][c] = GetCorner(N, E, S, W);
+    }  
+  }
+}
+
+void MarkTrajectory(Visualization& vis, const Maze& maz)
+{
+  const std::size_t grid_height = maz.size();
+  const std::size_t grid_width = maz[0].size();
+  const wchar_t trajectory = L'\x2591';
   for(int r=0; r<grid_height; ++r)
   {
     for(int c=0; c<grid_width; ++c)
     {
-      PrintCell1(maz[r][c], c+1 ==grid_width );
-    }
-    std::cout << std::endl;
-    for(int c=0; c<grid_width; ++c)
-    {
-      PrintCell2(maz[r][c],c+1 ==grid_width);
-    }
-    std::cout << std::endl;
-    if(r+1 == grid_height)
-    {
-      for(int c=0; c<grid_width; ++c)
+      if(maz[r][c].isRoute)
       {
-        PrintCell3(maz[r][c],c+1 ==grid_width);
+        vis[1+2*r][1+3*c] = trajectory;
+        vis[1+2*r][2+3*c] = trajectory;
+        if(maz[r][c].wallOpen_Up && r+1 < grid_height)
+        {
+          vis[2+2*r][1+3*c] = trajectory;
+          vis[2+2*r][2+3*c] = trajectory;
+        }
+        if(maz[r][c].wallOpen_Right && c+1 < grid_width)
+        {
+          vis[1+2*r][3*(c+1)] = trajectory;
+        }
       }
-    std::cout << std::endl;
     }
   }
-  std::cout << std::endl;
 }
+
+std::wstringstream MazeToString(const Maze& maz)
+{
+  
+  const std::size_t grid_height = maz.size();
+  const std::size_t grid_width = maz[0].size();
+  auto vis = CreateEmptyGrid(grid_height, grid_width);
+
+  for(int r=0; r<grid_height; ++r)
+  {
+    for(int c=0; c<grid_width; ++c)
+    {
+      RemoveWalls(vis, maz[r][c], Loc(2*r,3*c));
+    }
+  }
+
+  CorrectCorners(vis);
+
+  MarkTrajectory(vis, maz);
+
+  std::wstringstream ss;
+  for(auto row : vis)
+  {
+    ss << row << std::endl;
+  }
+
+  return ss;
+}
+
 
 Neighbors GetListOfUnvisitedNeighbors(const Maze& maz, Loc current)
 {
   Neighbors nn;
+  const std::size_t grid_height = maz.size();
+  const std::size_t grid_width = maz[0].size();
   
   // Down
   if(current.first -1 >=0 && !maz[current.first -1][current.second].visited)
@@ -104,7 +248,7 @@ Loc MoveForward(Maze& maz, Trajectory& track, const Neighbors& nn)
   maz[nnLoc.first][nnLoc.second].visited = true;
   track.push_back(nnLoc);
 
-  //std::cout << "  Moving from: " << current.first << "," << current.second 
+  //std::wcout << "  Moving from: " << current.first << "," << current.second 
   //  << " to:" << nnLoc.first << "," << nnLoc.second;
 
   //std::string dir = "none";
@@ -132,7 +276,7 @@ Loc MoveForward(Maze& maz, Trajectory& track, const Neighbors& nn)
     break;
   }
   
-  //std::cout << " | Which is: " << dir << std::endl;
+  //std::wcout << " | Which is: " << dir << std::endl;
 
   return nnLoc;
 };
@@ -143,7 +287,7 @@ Loc BackTrace(Maze& maz, Trajectory& track)
   {
     if(!GetListOfUnvisitedNeighbors(maz, track.back()).empty())
     {
-      //std::cout << "  Backtracking to:" << track.back().first << "," << track.back().second << std::endl;
+      //std::wcout << "  Backtracking to:" << track.back().first << "," << track.back().second << std::endl;
       return track.back();
     }
     track.pop_back();
@@ -151,7 +295,7 @@ Loc BackTrace(Maze& maz, Trajectory& track)
   return Loc(-1,-1);
 };
 
-Maze InitializeMaze()
+Maze InitializeMaze(const std::size_t grid_height, std::size_t grid_width)
 {
   Maze maz;
   maz.resize(grid_height);
@@ -169,9 +313,9 @@ Maze InitializeMaze()
 
 Loc FindAnyVisitedCellWithNn(const Maze& maz)
 {
-  for(int r=0; r<grid_height; ++r)
+  for(int r=0; r<maz.size(); ++r)
   {
-    for(int c=0; c<grid_width; ++c)
+    for(int c=0; c<maz[r].size(); ++c)
     {
       if(maz[r][c].visited && !GetListOfUnvisitedNeighbors(maz,Loc(r,c)).empty())
       {
@@ -184,6 +328,9 @@ Loc FindAnyVisitedCellWithNn(const Maze& maz)
 
 void ConstructMaze(Maze& maz, Trajectory& solution)
 {
+  const std::size_t grid_height = maz.size();
+  const std::size_t grid_width = maz[0].size();
+  const std::size_t nrCells = grid_width * grid_height;
   std::size_t nrVisited = 1;
   Loc currentLoc(0,0);
   Trajectory track;
@@ -193,7 +340,7 @@ void ConstructMaze(Maze& maz, Trajectory& solution)
   while(nrVisited <= nrCells)
   {
     auto nn = GetListOfUnvisitedNeighbors(maz, currentLoc);
-    //std::cout << "Visiting (" << currentLoc.first
+    //std::wcout << "Visiting (" << currentLoc.first
     //  << ", " << currentLoc.second << ") with "
     //  << nn.size() << " neighbors." << std::endl;
     if(nn.size() > 0)
@@ -213,7 +360,7 @@ void ConstructMaze(Maze& maz, Trajectory& solution)
         currentLoc = FindAnyVisitedCellWithNn(maz);
         if(currentLoc.first == -1)
         {
-          //std::cout << "All visited cells have no free nn" << std::endl;
+          //std::wcout << "All visited cells have no free nn" << std::endl;
           return;
         }
       }
@@ -229,21 +376,49 @@ void IndicateSolution(Maze& maz,const Trajectory& solution)
   }
 }
 
-int main()
+int main(int argc, char *argv[])
 {
-  auto maz = InitializeMaze();
+  // read args
+  std::size_t grid_height = 10;
+  std::size_t grid_width = 30;
+  if(argc == 3)
+  {
+    grid_height = std::stoi(argv[1]);
+    grid_width = std::stoi(argv[2]);
+  }
+  else if(argc > 1)
+  {
+    std::cout << "MAZE generator help" << std::endl << std::endl;
+    std::cout << "Provide two positive, non-zero integers to generate a maze of those dimensions." << std::endl;
+    std::cout << " - arg1 = height" << std::endl;
+    std::cout << " - arg2 = width" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if(grid_width == 0 || grid_height == 0)
+  {
+    std::cerr << "Invalid grid size. Please provide two positive, non-zero integers." << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  // construct maze (and solution)
+  auto maz = InitializeMaze(grid_height, grid_width);
   Trajectory solution;
   std::srand(std::time({})); // change rand seed
   ConstructMaze(maz,solution);
   maz[0][0].wallOpen_Down = true; // start
   maz[grid_height-1][grid_width-1].wallOpen_Up = true; // end
 
-  std::cout << std::endl << "START" << std::endl;
-  PrintMazeToStd(maz);
-  std::cout << std::string( 3*(grid_width-1), ' ' ) << "END" << std::endl;
+  // Display
+  _setmode(_fileno(stdout), _O_U16TEXT);
+  std::wcout << std::endl << L"START" << std::endl;
+  std::wcout << MazeToString(maz).str();
+  std::wcout << std::wstring( 3*(grid_width-1), L' ' ) << L"END" << std::endl;
   
-  std::cout << std::string( 10, '\n' ) << std::endl;
+  // Display solution
+  std::wcout << std::wstring( 10, L'\n' ) << std::endl;
   IndicateSolution(maz,solution);
-  PrintMazeToStd(maz);
-  return 0;
+  std::wcout << MazeToString(maz).str();
+
+  return EXIT_SUCCESS;
 }
