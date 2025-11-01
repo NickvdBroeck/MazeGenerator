@@ -37,3 +37,23 @@ This algorithm can handle any shape of grid, including grids with holes and none
 The algorithm always keeps the trajectory from start to the current cell.
 Hence, if the current cell equals the end cell, then the trajectory equals the solution.
 Store it before backtracing.
+
+## Development
+
+This project uses cmake.
+To build it simply run:
+
+```bash
+cmake --build build --config Release --target ALL_BUILD
+```
+
+And then run:
+
+```bash
+."build/Release/maze.exe"
+```
+
+
+## Notes
+
+The usage of `_setmode(_fileno(stdout), _O_U16TEXT);` andthe header `io.h` currently makes this windows only.

@@ -4,6 +4,7 @@
 #include <io.h>
 #include <fcntl.h>
 #include <string>
+#include <ctime>
 
 //const size_t grid_width = 5;
 //const size_t grid_height = 5;
@@ -376,22 +377,69 @@ void IndicateSolution(Maze& maz,const Trajectory& solution)
   }
 }
 
+std::size_t CalculateDifficulty(const Maze& maz)
+{
+  std::size_t difficulty = 0;
+  for(const auto& row : maz)
+  {
+    for(const auto & cell : row)
+    {
+      if(cell.isRoute)
+      {
+        int edges = 0;
+        edges += cell.wallOpen_Down ? 1 : 0;
+        edges += cell.wallOpen_Up ? 1 : 0;
+        edges += cell.wallOpen_Left ? 1 : 0;
+        edges += cell.wallOpen_Right ? 1 : 0;
+        if(edges > 2)
+        {
+          ++difficulty;
+        }
+      }
+    }
+  }
+  return difficulty;
+}
+
+void PrintHelp()
+{
+  std::cout << "MAZE generator help" << std::endl << std::endl;
+   std::cout << "Provide two positive, non-zero integers to generate a maze of those dimensions." << std::endl;
+   std::cout << " - arg1 = height" << std::endl;
+   std::cout << " - arg2 = width" << std::endl;
+   std::cout << " - arg3 = print solution (optional)" << std::endl;
+   std::cout << " - arg4 = seed (optional)" << std::endl;
+   std::cout << std::endl;
+   std::cout << "Examples: " << std::endl;
+   std::cout << "   'maze.exe'                 creates default size maze, no solution and random seed " << std::endl;
+   std::cout << "   'maze.exe 50 50'           creates 50 x 50 maze, no solution and random seed " << std::endl;
+   std::cout << "   'maze.exe 50 50 true'      same as above, but displays solution as well." << std::endl;
+   std::cout << "   'maze.exe 50 50 false 125' No solution, but use this seed." << std::endl;
+}
+
 int main(int argc, char *argv[])
 {
   // read args
   std::size_t grid_height = 10;
   std::size_t grid_width = 30;
-  if(argc == 3)
+  bool printSolution = false;
+  unsigned int seed = std::time({});
+  if(argc >= 3)
   {
     grid_height = std::stoi(argv[1]);
     grid_width = std::stoi(argv[2]);
   }
-  else if(argc > 1)
+  if(argc >= 4)
   {
-    std::cout << "MAZE generator help" << std::endl << std::endl;
-    std::cout << "Provide two positive, non-zero integers to generate a maze of those dimensions." << std::endl;
-    std::cout << " - arg1 = height" << std::endl;
-    std::cout << " - arg2 = width" << std::endl;
+    printSolution = std::string(argv[3]).compare("true") == 0;
+  }
+  if(argc >= 5)
+  {
+    seed = std::stoi(argv[4]);
+  }
+  if(argc == 2 | argc >= 6)
+  {
+    PrintHelp();
     return EXIT_FAILURE;
   }
 
@@ -404,7 +452,7 @@ int main(int argc, char *argv[])
   // construct maze (and solution)
   auto maz = InitializeMaze(grid_height, grid_width);
   Trajectory solution;
-  std::srand(std::time({})); // change rand seed
+  std::srand(seed); // set rand seed
   ConstructMaze(maz,solution);
   maz[0][0].wallOpen_Down = true; // start
   maz[grid_height-1][grid_width-1].wallOpen_Up = true; // end
@@ -414,11 +462,17 @@ int main(int argc, char *argv[])
   std::wcout << std::endl << L"START" << std::endl;
   std::wcout << MazeToString(maz).str();
   std::wcout << std::wstring( 3*(grid_width-1), L' ' ) << L"END" << std::endl;
-  
-  // Display solution
-  std::wcout << std::wstring( 10, L'\n' ) << std::endl;
+
   IndicateSolution(maz,solution);
-  std::wcout << MazeToString(maz).str();
+
+  // Display solution
+  if(printSolution)
+  {
+    std::wcout << std::wstring( 10, L'\n' ) << std::endl;
+    std::wcout << MazeToString(maz).str();
+  }
+  std::wcout << "seed: " << seed << std::endl;
+  std::wcout << "Difficulty: " << CalculateDifficulty(maz) << std::endl;
 
   return EXIT_SUCCESS;
 }
