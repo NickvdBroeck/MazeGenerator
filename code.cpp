@@ -176,12 +176,12 @@ void MarkTrajectory(Visualization& vis, const Maze& maz)
       {
         vis[1+2*r][1+3*c] = trajectory;
         vis[1+2*r][2+3*c] = trajectory;
-        if(maz[r][c].wallOpen_Up && r+1 < grid_height)
+        if(maz[r][c].wallOpen_Up && r+1 < grid_height && maz[r+1][c].isRoute)
         {
           vis[2+2*r][1+3*c] = trajectory;
           vis[2+2*r][2+3*c] = trajectory;
         }
-        if(maz[r][c].wallOpen_Right && c+1 < grid_width)
+        if(maz[r][c].wallOpen_Right && c+1 < grid_width && maz[r][c+1].isRoute)
         {
           vis[1+2*r][3*(c+1)] = trajectory;
         }
@@ -190,9 +190,8 @@ void MarkTrajectory(Visualization& vis, const Maze& maz)
   }
 }
 
-std::wstringstream MazeToString(const Maze& maz)
+std::wstringstream MazeToString(const Maze& maz, bool showSolution)
 {
-  
   const std::size_t grid_height = maz.size();
   const std::size_t grid_width = maz[0].size();
   auto vis = CreateEmptyGrid(grid_height, grid_width);
@@ -207,14 +206,16 @@ std::wstringstream MazeToString(const Maze& maz)
 
   CorrectCorners(vis);
 
-  MarkTrajectory(vis, maz);
+  if(showSolution)
+  {
+    MarkTrajectory(vis, maz);
+  }
 
   std::wstringstream ss;
   for(auto row : vis)
   {
     ss << row << std::endl;
   }
-
   return ss;
 }
 
@@ -457,22 +458,26 @@ int main(int argc, char *argv[])
   maz[0][0].wallOpen_Down = true; // start
   maz[grid_height-1][grid_width-1].wallOpen_Up = true; // end
 
+  IndicateSolution(maz,solution);
+
   // Display
   _setmode(_fileno(stdout), _O_U16TEXT);
-  std::wcout << std::endl << L"START" << std::endl;
-  std::wcout << MazeToString(maz).str();
+  std::wstringstream info;
+  info << CalculateDifficulty(maz) << " / " << seed;
+  std::wcout << std::endl << L"START" << std::wstring( 3*(grid_width)-4-info.str().size(), L' ' ) << info.str() << std::endl;
+  std::wcout << MazeToString(maz, false).str();
   std::wcout << std::wstring( 3*(grid_width-1), L' ' ) << L"END" << std::endl;
-
-  IndicateSolution(maz,solution);
 
   // Display solution
   if(printSolution)
   {
     std::wcout << std::wstring( 10, L'\n' ) << std::endl;
-    std::wcout << MazeToString(maz).str();
+    std::wcout << std::endl << L"START" << std::endl;
+    std::wcout << MazeToString(maz, true).str();
+    std::wcout << std::wstring( 3*(grid_width-1), L' ' ) << L"END" << std::endl;
+    std::wcout << "seed: " << seed << std::endl;
+    std::wcout << "Difficulty: " << CalculateDifficulty(maz) << std::endl;
   }
-  std::wcout << "seed: " << seed << std::endl;
-  std::wcout << "Difficulty: " << CalculateDifficulty(maz) << std::endl;
 
   return EXIT_SUCCESS;
 }
