@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html>
+  <!-- Maze generator
+    Created by Nick Van den Broeck
+    Date: November 2025
+   -->
+<head>
+  <title>Maze Visualization</title>
+  <style>
+    body { margin: 20px auto; width:fit-content; font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif; }
+    button { padding: 0.5em 1.5em; margin:0 1em; font-size: 1.5em;}
+    @media print {
+      h1, #controls{display:none;}
+    }
+  </style>
+</head>
+<body>
+  <h1>Doolhof</h1>
+
+  <div style="display:inline-block">
+  <div>Start</div>
+  <canvas id="mazeCanvas"></canvas>
+  <div style="text-align: right;">Einde</div>
+  </div>
+
+  <div id="controls">
+    <p>
+      Breedte: <span id="width" style="width:1.75em;display:inline-block"></span>
+    <input type="range" min="5" max="150" value="15" id="widthSlider" style="width:250px;">
+    <span style="width: 3em;display: inline-block;"> </span>
+      Hoogte: <span id="height" style="wwidth:1.75em;display:inline-block"></span>
+    <input type="range" min="5" max="150" value="10" id="heightSlider" style="width:250px;">
+    </p>
+    <button id="generate">Genereer</button>
+    <button id="letters">Woord doolhof</button>
+    <button id="solution">Oplossing</button>
+
+    <p style="font-size: 0.7em; font-style: italic;display: block;position:absolute;top:0; right:10px">Created by Nick Van den Broeck</p>
+
+  </div>
+
+  <script>
+
+    const words = ["tafel", "appel", "banaan", "aardbei", "mango", "paprika", "huis", "blad", "top", "geit", "kerstboom", "halloween", "boom", "bos",
+      "vogel", "koe", "papier", "muziek", "gitaar", "pasta", "koffie", "piano", "school", "broek", "bouwen", "deur", "gras", "grond", "groen", "blauw",
+      "prinses", "koning", "koningin", "elf", "regenboog", "eenhoorn", "paard", "egel", "zomer", "herst", "winter", "lente", "tuin", "maandag", "dinsdag",
+      "woensdag", "donderdag", "zaterdag", "zondag", "vrijdag", "januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september",
+       "oktober", "november", "december", "hond", "kat", "worm", "wafel", "snoep", "Kara", "water", "sneeuw", "zon", "planeet", "beker", "driehoek",
+       "eekhoorn", "boterham", "taart", "dobbelsteen", "berg", "schilderij", "eend", "monster", "spook", "cadeau", "fiets", "lijm", "mens", "meneer",
+       "mevrouw", "schouw", "voetbal", "ballet", "pleister", "bal", "wonder", "hert", "muis", "kaas", "chocolade", "papa", "mama", "auto", "vliegtuig",
+       "trein", "raket", "maan", "broer", "badkuip", "zwembad", "glijbaan", "kastanje", "mandarijn", "perzik", "peer", "spaghetti", "frietjes", "komkommer",
+       "tomaat", "erwt", "brood", "kokosnoot", "speeltuin", "wetenschap", "computer", "boek", "computer", "gras", "ster", "donker", "nacht", "vriend", "glimlach",
+       "dokter", "warm", "slak", "tennis", "ziekenhuis", "wekker", "speelgoed", "spin", "uil", "sneeuwman", "prins", "kasteel", "toren", "straat", "strand", "zee",
+       "bloem", "sinterklaas", "kerstman", "kerk", "dorp", "land", "stoel", "zetel", "gedicht", "jas", "trui", "schoen", "schrijven", "tekenen", "tekening", "huiswerk",
+       "bibliotheek", "kleuter", "heuvel", "supermarkt", "winkel", "appeltaart", "feest", "bank", "speeltijd", "bel"
+    ];
+
+    const WallColor = '#000';
+    const LetterColor = '#005';
+
+    const locToCoord = (loc) => {
+    const [updown, LR] = loc;
+    return (updown * LR) + LR;
+  };
+
+  class Cell {
+    constructor(r,c) {
+      this.loc = [r, c];
+      this.visited = false;
+      this.wallOpen_Up = false;
+      this.wallOpen_Down = false;
+      this.wallOpen_Left = false;
+      this.wallOpen_Right = false;
+      this.isRoute = false;
+      this.letter = 'a';
+    }
+  }
+
+  class Maze {
+    constructor(gridHeight, gridWidth) {
+      this.maz = []
+      for (let r = 0; r < gridHeight; ++r) {
+        this.maz[r] = []
+        for (let c = 0; c < gridWidth; ++c) {
+          this.maz[r].push(new Cell(r, c))
+        }
+      }
+      this.solution = [];
+    }
+
+    generateMaze(seed) {
+      const gridHeight = this.maz.length;
+      const gridWidth = this.maz[0].length;
+      const nrCells = gridWidth * gridHeight;
+      let nrVisited = 1;
+      let currentLoc = [0, 0];
+      let track = [currentLoc];
+      this.maz[currentLoc[0]][currentLoc[1]].visited = true;
+      while (nrVisited <= nrCells) {
+        const nn = this.getUnvisitedNeighbors(currentLoc);
+        if (nn.length > 0) {
+          currentLoc = this.moveForward(track, nn);
+          track.push(currentLoc);
+          ++nrVisited;
+          if (currentLoc[0] + 1 === gridHeight && currentLoc[1] + 1 === gridWidth) {
+            this.solution = structuredClone(track);
+          }
+        } else {
+          currentLoc = this.backTrace(track);
+          if (currentLoc[0] === -1) {
+            currentLoc = this.findVisitedCellWithNN();
+            if (currentLoc[0] === -1) {
+              break; // All visited cells have no free nn
+            }
+          }
+        }
+      }
+
+      // start and end
+      this.maz[0][0].wallOpen_Up = true;
+      this.maz[gridHeight-1][gridWidth-1].wallOpen_Down = true;
+
+      // indicate solution
+      this.solution.forEach((loc) => {
+        this.maz[loc[0]][loc[1]].isRoute = true;
+      })
+    }
+
+    moveForward(track, nn) {
+      const current = track[track.length - 1];
+      const selected = Math.floor(Math.random() * nn.length);
+      const nnLoc = nn[selected].loc;
+      this.maz[nnLoc[0]][nnLoc[1]].visited = true;
+
+      switch (String(nn[selected].dir)) {
+        case "up":
+          this.maz[current[0]][current[1]].wallOpen_Up = true;
+          this.maz[nnLoc[0]][nnLoc[1]].wallOpen_Down = true;
+          break;
+        case "down":
+          this.maz[current[0]][current[1]].wallOpen_Down = true;
+          this.maz[nnLoc[0]][nnLoc[1]].wallOpen_Up = true;
+          break;
+        case "left":
+          this.maz[current[0]][current[1]].wallOpen_Left = true;
+          this.maz[nnLoc[0]][nnLoc[1]].wallOpen_Right = true;
+          break;
+        case "right":
+          this.maz[current[0]][current[1]].wallOpen_Right = true;
+          this.maz[nnLoc[0]][nnLoc[1]].wallOpen_Left = true;
+          break;
+      }
+
+      return nnLoc;
+    }
+
+    getUnvisitedNeighbors(current) {
+      const nn = [];
+      const gridHeight = this.maz.length;
+      const gridWidth = this.maz[0].length;
+
+      if (current[0] - 1 >= 0 && !this.maz[current[0] - 1][current[1]].visited) {
+        nn.push({ dir: "up", loc: [current[0] - 1, current[1]] });
+      }
+      if (current[0] + 1 < gridHeight && !this.maz[current[0] + 1][current[1]].visited) {
+        nn.push({ dir: "down", loc: [current[0] + 1, current[1]] });
+      }
+      if (current[1] - 1 >= 0 && !this.maz[current[0]][current[1] - 1].visited) {
+        nn.push({ dir: "left", loc: [current[0], current[1] - 1] });
+      }
+      if (current[1] + 1 < gridWidth && !this.maz[current[0]][current[1] + 1].visited) {
+        nn.push({ dir: "right", loc: [current[0], current[1] + 1] });
+      }
+
+      return nn;
+    }
+
+    backTrace(track) {
+      while (track.length > 0) {
+        if (this.getUnvisitedNeighbors(track[track.length - 1]).length > 0) {
+          return track[track.length - 1];
+        }
+        track.pop();
+      }
+      return [-1, -1];
+    }
+
+    findVisitedCellWithNN() {
+      for (let r = 0; r < this.maz.length; ++r) {
+        for (let c = 0; c < this.maz[r].length; ++c) {
+          if (this.maz[r][c].visited && this.getUnvisitedNeighbors([r, c]).length > 0) {
+            return [r, c];
+          }
+        }
+      }
+      return [-1, -1];
+    }
+
+    indicateSolution(solution) {
+      for (const loc of solution) {
+        this.maz[loc[0]][loc[1]].isRoute = true;
+      }
+    }
+
+    assignLetters(word) {
+      for (let r = 0; r < this.maz.length; ++r) {
+        for (let c = 0; c < this.maz[r].length; ++c) {
+          const wordIndex = Math.floor(Math.random()*word.length);
+          this.maz[r][c].letter = word.charAt(wordIndex);
+        }
+      }
+
+      for(let i=0; i < this.solution.length; ++i){
+        this.maz[this.solution[i][0]][this.solution[i][1]].letter = word.charAt(i%word.length);
+      }
+    }
+  }
+  
+
+    let m = new Maze(1, 1);
+    let showSolution = false;
+    let showLetters = false;
+
+    function SelectWord(trajecotoryLength){
+      let nrTries = 0;
+      word = words[Math.floor(Math.random()*words.length)];
+      while( nrTries < 30)
+      {
+        const wordIndex = Math.floor(Math.random()*words.length);
+        word = words[wordIndex];
+        console.log("Trying word: ",word, trajecotoryLength % (word.length), trajecotoryLength % (word.length+1));
+        if(trajecotoryLength % (word.length+1) == 0
+          ||trajecotoryLength % (word.length+1) == word.length)
+        {
+          return word+"-"; 
+        }
+        if(trajecotoryLength % (word.length) == 0)
+        {
+          return word; 
+        }
+        if(trajecotoryLength % (word.length+3) == 0)
+        {
+          return word+"-*-"; 
+        }
+        ++nrTries;
+      }
+      return word+"-";
+    }
+
+    function GenerateMaze(gridHeight, gridWidth){
+      const seed = Math.random(); // generate random seed
+      console.log("Start generating maze")
+      mazeData = new Maze(gridHeight, gridWidth);
+      mazeData.generateMaze(seed);
+      const word = SelectWord(mazeData.solution.length);
+      console.log("word selected: ", word)
+      mazeData.assignLetters(word);
+      console.log(mazeData);
+      return mazeData;
+    }
+
+    function drawMaze(mazeData, withRoute, withLetters) {
+      const canvas = document.getElementById('mazeCanvas');
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#000';
+      ctx.font = 'bold ';
+
+      console.log(mazeData)
+
+      const gridHeight = mazeData.maz.length;
+      const gridWidth = mazeData.maz[0].length;
+
+      const margin = 50;
+
+      const cellSize = Math.max(30,Math.min(50, Math.min((window.innerWidth-margin) / gridWidth, (window.innerHeight-margin) / gridHeight)));
+
+      canvas.width = mazeData.maz[0].length * cellSize+2;
+      canvas.height = mazeData.maz.length * cellSize+2;
+
+      if(withRoute)
+      {
+        for(let i = 0 ; i < mazeData.solution.length; ++i)
+        {
+          const x = mazeData.solution[i][1] * cellSize;
+          const y = mazeData.solution[i][0] * cellSize;
+          ctx.fillStyle = 'hsl('+Math.floor(i/mazeData.solution.length*255)+',70%,60%)';
+          ctx.fillRect(x + 2, y + 2, cellSize - 4, cellSize - 4);
+        }
+      }
+
+      for (let r = 0; r < mazeData.maz.length; ++r) {
+        for (let c = 0; c < mazeData.maz[r].length; ++c) {
+          const cell = mazeData.maz[r][c];
+          const x = c * cellSize;
+          const y = r * cellSize;
+
+          const wallThickness = gridWidth > 100 ? 1 : 2;
+
+          ctx.fillStyle = cell.wallOpen_Up ? '#fff' : WallColor;
+          ctx.fillRect(x, y, cellSize+2, wallThickness);
+
+          ctx.fillStyle = cell.wallOpen_Down ? '#fff' : WallColor;
+          ctx.fillRect(x, y + cellSize-1 , cellSize+2, wallThickness);
+
+          ctx.fillStyle = cell.wallOpen_Left ? '#fff' : WallColor;
+          ctx.fillRect(x, y, wallThickness, cellSize+2);
+
+          ctx.fillStyle = cell.wallOpen_Right ? '#fff' : WallColor;
+          ctx.fillRect(x + cellSize-1, y, wallThickness, cellSize+2);
+
+          if(withLetters)
+          {
+            ctx.fillStyle = LetterColor;
+            ctx.font = 'bold ' + cellSize + 'px Lucida sans';
+            const text = cell.letter;
+            const textWidth = ctx.measureText(text).width;
+            const textHeight = cellSize*0.5;
+            ctx.fillText(text, x + (cellSize - textWidth) / 2, y + (cellSize + textHeight) / 2);
+          }
+        }
+      }
+    }
+
+    const widthSpan = document.getElementById('width');
+    const widthSlider = document.getElementById('widthSlider');
+    const heightSpan = document.getElementById('height');
+    const heightSlider = document.getElementById('heightSlider');
+    const generateButton = document.getElementById('generate');
+    const lettersButton = document.getElementById('letters');
+    const solutionButton = document.getElementById('solution');
+
+    widthSpan.textContent = widthSlider.value;
+    heightSpan.textContent = heightSlider.value;
+
+    widthSlider.addEventListener('input', function() {
+      widthSpan.textContent = this.value;
+    });
+
+    heightSlider.addEventListener('input', function() {
+      heightSpan.textContent = this.value;
+    });
+
+    generateButton.addEventListener('click', function() {
+      showSolution = false;
+      m = GenerateMaze(heightSlider.value, widthSlider.value);
+      drawMaze(m,showSolution,showLetters);
+    });
+
+    lettersButton.addEventListener('click', function() {
+      showLetters = !showLetters;
+      drawMaze(m,showSolution,showLetters);
+    })
+
+    solutionButton.addEventListener('click', function() {
+      showSolution = !showSolution;
+      drawMaze(m,showSolution,showLetters);
+    })
+    
+    generateButton.click();
+
+  </script>
+</body>
+</html>

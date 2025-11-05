@@ -1,5 +1,7 @@
 # Maze Generator
 
+<img src="MazeGenerator.png" alt="" width="300"/>
+
 ![c++](https://img.shields.io/badge/language-c%2B%2B-blue)
 
 ## Intro

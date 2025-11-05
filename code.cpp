@@ -42,6 +42,7 @@ typedef std::vector<Loc> Trajectory;
 typedef std::vector<std::pair<Dir,Cell>> Neighbors;
 typedef std::vector<std::wstring> Visualization;
 
+{ // VISUALIZATION
 Visualization CreateEmptyGrid(const std::size_t grid_height, const std::size_t grid_width)
 {
   const std::size_t lastPixel_r = 2*grid_height; // 2 because: 1*wall + 1*center
@@ -218,7 +219,7 @@ std::wstringstream MazeToString(const Maze& maz, bool showSolution)
   }
   return ss;
 }
-
+}
 
 Neighbors GetListOfUnvisitedNeighbors(const Maze& maz, Loc current)
 {
